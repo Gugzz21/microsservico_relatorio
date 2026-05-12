@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,4 +5,55 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+}
+
+// Registo central do relatório consolidado
+model Relatorio {
+  relatorio_id              Int      @id @default(autoincrement())
+  relatorio_emprestimo_id   Int?
+  relatorio_livro_id        Int?
+  relatorio_usuario_id      Int?
+  relatorio_status          Int      @default(1)
+  relatorio_data_geracao    DateTime @default(now())
+
+  @@index([relatorio_data_geracao], map: "idx_rel_data")
+  @@map("relatorio")
+}
+
+// Snapshot analítico por Livro
+model RelatorioLivro {
+  relatorio_livro_id                Int      @id @default(autoincrement())
+  relatorio_livro_titulo            String   @db.VarChar(255)
+  relatorio_livro_total_emprestimos Int
+  relatorio_livro_periodo_inicio    DateTime @db.Date
+  relatorio_livro_periodo_fim       DateTime @db.Date
+  relatorio_livro_data_geracao      DateTime @default(now())
+
+  @@index([relatorio_livro_titulo], map: "idx_rel_livro_tit")
+  @@map("relatorio_livro")
+}
+
+// Snapshot analítico por Utilizador (Leitor)
+model RelatorioUsuario {
+  relatorio_usuario_id              Int      @id @default(autoincrement())
+  relatorio_usuario_nome            String   @db.VarChar(255)
+  relatorio_usuario_total_emprestimos Int
+  relatorio_usuario_total_atrasos   Int
+  relatorio_usuario_total_multas    Decimal  @db.Decimal(10,2)
+  relatorio_usuario_data_geracao    DateTime @default(now())
+
+  @@index([relatorio_usuario_total_multas], map: "idx_rel_usr_multas")
+  @@map("relatorio_usuario")
+}
+
+// Snapshot analítico financeiro e de empréstimos
+model RelatorioEmprestimo {
+  relatorio_emprestimo_id              Int      @id @default(autoincrement())
+  relatorio_emprestimo_data_emprestimo DateTime @db.Date
+  relatorio_emprestimo_data_prevista   DateTime @db.Date
+  relatorio_emprestimo_data_devolucao  DateTime? @db.Date
+  relatorio_emprestimo_multa_aplicada  Decimal  @db.Decimal(10,2)
+  relatorio_emprestimo_data_geracao    DateTime @default(now())
+
+  @@map("relatorio_emprestimo")
 }
