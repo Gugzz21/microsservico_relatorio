@@ -1,6 +1,13 @@
 const restify = require('restify');
 require('dotenv').config();
 
+const rabbitmq = require('./config/rabbitmq');
+
+// Conectar ao RabbitMQ de forma assíncrona (inicia consumidores automaticamente)
+rabbitmq.connect().catch(err => {
+    console.error('[RabbitMQ] Erro na conexão inicial:', err.message);
+});
+
 const server = restify.createServer({
     name: 'microsservico_relatorio'
 });

@@ -36,6 +36,9 @@ async function connect() {
         console.log('[RabbitMQ] Conectado. Exchange:', EXCHANGE);
         connecting = false;
 
+        // Inicia os consumidores das filas
+        await iniciarConsumidores();
+
         // Reconecta se a conexão cair
         connection.on('close', () => {
             console.warn('[RabbitMQ] Conexão encerrada. Reconectando em', RECONNECT_DELAY_MS, 'ms...');
@@ -103,4 +106,91 @@ const EVENTS = {
     SNAPSHOT_EMPRESTIMO_GERADO: 'biblioteca.relatorio.snapshot_emprestimo.gerado',
 };
 
-module.exports = { connect, publish, close, EVENTS };
+async function iniciarConsumidores() {
+    const prisma = require('./prisma'); // singleton
+
+    // ── Fila 1: empréstimo criado → snapshot de empréstimo ─────────────────
+    const qEmprestimo = 'relatorio.fila.emprestimo.criado';
+    await channel.assertQueue(qEmprestimo, { durable: true });
+    await channel.bindQueue(qEmprestimo, EXCHANGE, 'biblioteca.emprestimo.criado');
+
+    channel.consume(qEmprestimo, async (msg) => {
+        if (!msg) return;
+        try {
+            const payload = JSON.parse(msg.content.toString());
+
+            await prisma.relatorioEmprestimo.create({
+                data: {
+                    relatorio_emprestimo_data_emprestimo: new Date(payload.timestamp || Date.now()),
+                    relatorio_emprestimo_data_prevista: new Date(payload.dataPrazo),
+                    relatorio_emprestimo_multa_aplicada: 0
+                }
+            });
+
+            console.log(`[RabbitMQ Consumer] Snapshot de empréstimo ${payload.emprestimoId} salvo no Relatório.`);
+            channel.ack(msg);
+        } catch (err) {
+            console.error('[RabbitMQ Consumer] Erro ao processar biblioteca.emprestimo.criado:', err.message);
+            channel.nack(msg, false, false);
+        }
+    });
+
+    // ── Fila 2: devolução registrada → snapshot com data de devolução ──────
+    const qDevolucao = 'relatorio.fila.devolucao.registrada';
+    await channel.assertQueue(qDevolucao, { durable: true });
+    await channel.bindQueue(qDevolucao, EXCHANGE, 'biblioteca.devolucao.registrada');
+
+    channel.consume(qDevolucao, async (msg) => {
+        if (!msg) return;
+        try {
+            const payload = JSON.parse(msg.content.toString());
+
+            // Cria registro principal de relatório vinculado ao empréstimo/usuário/livro
+            await prisma.relatorio.create({
+                data: {
+                    relatorio_emprestimo_id: payload.emprestimoId || null,
+                    relatorio_livro_id: payload.livroId || null,
+                    relatorio_usuario_id: payload.usuarioId || null,
+                    relatorio_status: 1
+                }
+            });
+
+            console.log(`[RabbitMQ Consumer] Relatório de devolução ${payload.devolucaoId} salvo.`);
+            channel.ack(msg);
+        } catch (err) {
+            console.error('[RabbitMQ Consumer] Erro ao processar biblioteca.devolucao.registrada:', err.message);
+            channel.nack(msg, false, false);
+        }
+    });
+
+    // ── Fila 3: multa criada → snapshot de usuário inadimplente ────────────
+    const qMulta = 'relatorio.fila.multa.criada';
+    await channel.assertQueue(qMulta, { durable: true });
+    await channel.bindQueue(qMulta, EXCHANGE, 'biblioteca.multa.criada');
+
+    channel.consume(qMulta, async (msg) => {
+        if (!msg) return;
+        try {
+            const payload = JSON.parse(msg.content.toString());
+
+            await prisma.relatorioUsuario.create({
+                data: {
+                    relatorio_usuario_nome: `Usuário ${payload.usuarioId}`,
+                    relatorio_usuario_total_emprestimos: 1,
+                    relatorio_usuario_total_atrasos: 1,
+                    relatorio_usuario_total_multas: payload.valor || 0
+                }
+            });
+
+            console.log(`[RabbitMQ Consumer] Snapshot de multa para usuário ${payload.usuarioId} salvo.`);
+            channel.ack(msg);
+        } catch (err) {
+            console.error('[RabbitMQ Consumer] Erro ao processar biblioteca.multa.criada:', err.message);
+            channel.nack(msg, false, false);
+        }
+    });
+
+    console.log('[RabbitMQ] Consumidores do Relatório iniciados com sucesso.');
+}
+
+module.exports = { connect, publish, close, EVENTS, iniciarConsumidores };
