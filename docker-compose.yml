@@ -42,5 +42,4 @@ services:
 # ─── Rede interna do projeto Biblioteca ───────────────────────────────────────
 networks:
   biblioteca-net:
-    name: biblioteca-net
-    driver: bridge
+    external: true
