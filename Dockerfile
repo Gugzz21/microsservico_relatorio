@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Instala OpenSSL 1.1 (necessário para o Prisma engine no Alpine 3.20+)
+RUN apk add --no-cache openssl1.1-compat
+
 # Instala dependências (incluindo dev para o Prisma CLI)
 COPY package*.json ./
 RUN npm ci
@@ -20,6 +23,9 @@ RUN npm prune --omit=dev
 FROM node:22-alpine
 
 WORKDIR /app
+
+# Instala OpenSSL 1.1 (necessário para o Prisma engine no Alpine 3.20+)
+RUN apk add --no-cache openssl1.1-compat
 
 # Copia artefatos do estágio de build
 COPY --from=builder /app/node_modules ./node_modules

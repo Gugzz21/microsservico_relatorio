@@ -41,7 +41,7 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://localhost:9504/health",
+          "http://biblioteca-relatorio:9504/health",
         ]
       interval: 30s
       timeout: 10s
